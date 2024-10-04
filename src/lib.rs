@@ -22,16 +22,22 @@ mod token {
         pub kind: TokenType,
         pub literal: String,
     }
+
+    impl Token {
+        pub fn new(kind: TokenType, literal: String) -> Self {
+            Token { kind, literal }
+        }
+    }
 }
 
 mod lexer {
     use crate::token;
-
+    #[derive(Debug)]
     pub struct Lexer {
         input: String,
         position: usize,
         read_position: usize,
-        ch: char,
+        ch: Option<char>,
     }
 
     impl Lexer {
@@ -40,22 +46,39 @@ mod lexer {
                 input: input.to_string(),
                 position: 0,
                 read_position: 0,
-                ch: ' ',
+                ch: None,
             };
             lexer.read_char();
             lexer
         }
         fn read_char(&mut self) {
             if self.read_position >= self.input.len() {
-                self.ch = ' ';
+                self.ch = None;
             } else {
-                self.ch = self.input.chars().nth(self.read_position).unwrap();
+                self.ch = self.input.chars().nth(self.read_position);
             }
             self.position = self.read_position;
             self.read_position += 1;
         }
-        pub fn next_token(&self) -> token::Token {
-            todo!();
+        pub fn next_token(&mut self) -> token::Token {
+            let tok: token::Token;
+            if let Some(current_char) = self.ch {
+                match current_char {
+                    '=' => tok = token::Token::new(token::ASSIGN, current_char.to_string()),
+                    ';' => tok = token::Token::new(token::SEMICOLON, current_char.to_string()),
+                    '(' => tok = token::Token::new(token::LPAREN, current_char.to_string()),
+                    ')' => tok = token::Token::new(token::RPAREN, current_char.to_string()),
+                    ',' => tok = token::Token::new(token::COMMA, current_char.to_string()),
+                    '+' => tok = token::Token::new(token::PLUS, current_char.to_string()),
+                    '{' => tok = token::Token::new(token::LBRACE, current_char.to_string()),
+                    '}' => tok = token::Token::new(token::RBRACE, current_char.to_string()),
+                    _ => panic!("We don't handle this token yet!"),
+                }
+            } else {
+                tok = token::Token::new(token::EOF, "".to_string());
+            }
+            self.read_char();
+            tok
         }
     }
 }
@@ -64,12 +87,11 @@ mod lexer {
 mod tests {
     use super::lexer::Lexer;
     use super::token;
-    use std::collections::HashMap;
 
     #[test]
     fn test_next_token() {
         let input_code = "=+(){},;";
-        let expected = HashMap::from([
+        let expected: Vec<(token::TokenType, &str)> = vec![
             (token::ASSIGN, "="),
             (token::PLUS, "+"),
             (token::LPAREN, "("),
@@ -78,8 +100,8 @@ mod tests {
             (token::RBRACE, "}"),
             (token::COMMA, ","),
             (token::SEMICOLON, ";"),
-        ]);
-        let lexer = Lexer::new(input_code);
+        ];
+        let mut lexer = Lexer::new(input_code);
         for (exp_token, exp_literal) in expected.iter() {
             let token = lexer.next_token();
             assert_eq!(&token.kind, exp_token);
