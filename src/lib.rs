@@ -28,6 +28,16 @@ mod token {
             Token { kind, literal }
         }
     }
+
+    pub fn lookup_ident(ident: &str) -> TokenType {
+        if ident == "fn" {
+            FUNCTION
+        } else if ident == "let" {
+            LET
+        } else {
+            IDENT
+        }
+    }
 }
 
 mod lexer {
@@ -38,6 +48,16 @@ mod lexer {
         position: usize,
         read_position: usize,
         ch: Option<char>,
+    }
+
+    trait IsLetter {
+        fn is_letter(&self) -> bool;
+    }
+
+    impl IsLetter for char {
+        fn is_letter(&self) -> bool {
+            'a' <= *self && *self <= 'z' || 'A' <= *self && *self <= 'Z' || *self == '_'
+        }
     }
 
     impl Lexer {
@@ -60,8 +80,34 @@ mod lexer {
             self.position = self.read_position;
             self.read_position += 1;
         }
+        fn read_number(&mut self) -> String {
+            todo!()
+        }
+        fn read_identifier(&mut self) -> String {
+            let position = self.position;
+            while self
+                .ch
+                .expect("self.ch should always be a Some variant at this point")
+                .is_letter()
+            {
+                self.read_char();
+            }
+            self.input[position..self.position].to_string()
+        }
+        fn skip_whitespace(&mut self) {
+            let mut current_char = self.ch.expect("Never None here");
+            while current_char == ' '
+                || current_char == '\t'
+                || current_char == '\n'
+                || current_char == '\r'
+            {
+                self.read_char();
+                current_char = self.ch.expect("Never None");
+            }
+        }
         pub fn next_token(&mut self) -> token::Token {
             let tok: token::Token;
+            self.skip_whitespace();
             if let Some(current_char) = self.ch {
                 match current_char {
                     '=' => tok = token::Token::new(token::ASSIGN, current_char.to_string()),
@@ -72,7 +118,19 @@ mod lexer {
                     '+' => tok = token::Token::new(token::PLUS, current_char.to_string()),
                     '{' => tok = token::Token::new(token::LBRACE, current_char.to_string()),
                     '}' => tok = token::Token::new(token::RBRACE, current_char.to_string()),
-                    _ => panic!("We don't handle this token yet!"),
+                    _ => {
+                        if current_char.is_letter() {
+                            let ident = self.read_identifier();
+                            println!("{ident}");
+                            let ident_kind = token::lookup_ident(&ident);
+                            return token::Token::new(ident_kind, ident);
+                        } else if current_char.is_ascii_digit() {
+                            let number = self.read_number();
+                            return token::Token::new(token::INT, number);
+                        } else {
+                            tok = token::Token::new(token::ILLEGAL, current_char.to_string())
+                        }
+                    }
                 }
             } else {
                 tok = token::Token::new(token::EOF, "".to_string());
@@ -89,7 +147,7 @@ mod tests {
     use super::token;
 
     #[test]
-    fn test_next_token() {
+    fn basic_next_token() {
         let input_code = "=+(){},;";
         let expected: Vec<(token::TokenType, &str)> = vec![
             (token::ASSIGN, "="),
@@ -100,6 +158,63 @@ mod tests {
             (token::RBRACE, "}"),
             (token::COMMA, ","),
             (token::SEMICOLON, ";"),
+        ];
+        let mut lexer = Lexer::new(input_code);
+        for (exp_token, exp_literal) in expected.iter() {
+            let token = lexer.next_token();
+            assert_eq!(&token.kind, exp_token);
+            assert_eq!(&token.literal, exp_literal);
+        }
+    }
+
+    #[test]
+    fn intermediate_next_token() {
+        let input_code = r#"let five = 5;
+let ten = 10;
+
+let add = fn(x, y) {
+    x + y;
+};
+let result = add(five, ten);
+"#;
+        let expected: Vec<(token::TokenType, &str)> = vec![
+            (token::LET, "let"),
+            (token::IDENT, "five"),
+            (token::ASSIGN, "="),
+            (token::INT, "5"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "ten"),
+            (token::ASSIGN, "="),
+            (token::INT, "10"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "add"),
+            (token::ASSIGN, "="),
+            (token::FUNCTION, "fn"),
+            (token::LPAREN, "("),
+            (token::IDENT, "x"),
+            (token::COMMA, ","),
+            (token::IDENT, "y"),
+            (token::RPAREN, ")"),
+            (token::LBRACE, "{"),
+            (token::IDENT, "x"),
+            (token::PLUS, "+"),
+            (token::IDENT, "y"),
+            (token::SEMICOLON, ";"),
+            (token::RBRACE, ")"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "result"),
+            (token::ASSIGN, "="),
+            (token::IDENT, "add"),
+            (token::LPAREN, "("),
+            (token::IDENT, "five"),
+            (token::COMMA, ","),
+            (token::IDENT, "ten"),
+            (token::RPAREN, ")"),
+            (token::SEMICOLON, ";"),
+            (token::EOF, ""),
         ];
         let mut lexer = Lexer::new(input_code);
         for (exp_token, exp_literal) in expected.iter() {
