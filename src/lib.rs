@@ -5,6 +5,12 @@ mod token {
     pub const INT: TokenType = TokenType("INT");
     pub const ASSIGN: TokenType = TokenType("=");
     pub const PLUS: TokenType = TokenType("+");
+    pub const MINUS: TokenType = TokenType("-");
+    pub const BANG: TokenType = TokenType("!");
+    pub const ASTERISK: TokenType = TokenType("*");
+    pub const SLASH: TokenType = TokenType("/");
+    pub const LT: TokenType = TokenType("<");
+    pub const GT: TokenType = TokenType(">");
     pub const COMMA: TokenType = TokenType(",");
     pub const SEMICOLON: TokenType = TokenType(";");
     pub const LPAREN: TokenType = TokenType("(");
@@ -13,11 +19,16 @@ mod token {
     pub const RBRACE: TokenType = TokenType("}");
     pub const FUNCTION: TokenType = TokenType("FUNCTION");
     pub const LET: TokenType = TokenType("LET");
+    pub const TRUE: TokenType = TokenType("TRUE");
+    pub const FALSE: TokenType = TokenType("FALSE");
+    pub const IF: TokenType = TokenType("IF");
+    pub const ELSE: TokenType = TokenType("ELSE");
+    pub const RETURN: TokenType = TokenType("RETURN");
 
-    #[derive(Debug, PartialEq, Eq, Hash)]
+    #[derive(Debug, PartialEq)]
     pub struct TokenType(&'static str);
 
-    #[derive(Debug, PartialEq, Eq, Hash)]
+    #[derive(Debug, PartialEq)]
     pub struct Token {
         pub kind: TokenType,
         pub literal: String,
@@ -30,12 +41,15 @@ mod token {
     }
 
     pub fn lookup_ident(ident: &str) -> TokenType {
-        if ident == "fn" {
-            FUNCTION
-        } else if ident == "let" {
-            LET
-        } else {
-            IDENT
+        match ident {
+            "fn" => FUNCTION,
+            "let" => LET,
+            "true" => TRUE,
+            "false" => FALSE,
+            "if" => IF,
+            "else" => ELSE,
+            "return" => RETURN,
+            _ => IDENT,
         }
     }
 }
@@ -81,7 +95,15 @@ mod lexer {
             self.read_position += 1;
         }
         fn read_number(&mut self) -> String {
-            todo!()
+            let position = self.position;
+            while self
+                .ch
+                .expect("self.ch should always be Some variant at this point")
+                .is_ascii_digit()
+            {
+                self.read_char();
+            }
+            self.input[position..self.position].to_string()
         }
         fn read_identifier(&mut self) -> String {
             let position = self.position;
@@ -102,7 +124,11 @@ mod lexer {
                 || current_char == '\r'
             {
                 self.read_char();
-                current_char = self.ch.expect("Never None");
+                if let Some(some_char) = self.ch {
+                    current_char = some_char
+                } else {
+                    break;
+                }
             }
         }
         pub fn next_token(&mut self) -> token::Token {
@@ -116,12 +142,17 @@ mod lexer {
                     ')' => tok = token::Token::new(token::RPAREN, current_char.to_string()),
                     ',' => tok = token::Token::new(token::COMMA, current_char.to_string()),
                     '+' => tok = token::Token::new(token::PLUS, current_char.to_string()),
+                    '-' => tok = token::Token::new(token::MINUS, current_char.to_string()),
+                    '!' => tok = token::Token::new(token::BANG, current_char.to_string()),
+                    '*' => tok = token::Token::new(token::ASTERISK, current_char.to_string()),
+                    '/' => tok = token::Token::new(token::SLASH, current_char.to_string()),
+                    '<' => tok = token::Token::new(token::LT, current_char.to_string()),
+                    '>' => tok = token::Token::new(token::GT, current_char.to_string()),
                     '{' => tok = token::Token::new(token::LBRACE, current_char.to_string()),
                     '}' => tok = token::Token::new(token::RBRACE, current_char.to_string()),
                     _ => {
                         if current_char.is_letter() {
                             let ident = self.read_identifier();
-                            println!("{ident}");
                             let ident_kind = token::lookup_ident(&ident);
                             return token::Token::new(ident_kind, ident);
                         } else if current_char.is_ascii_digit() {
@@ -168,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn intermediate_next_token() {
+    fn numbers_and_idents_test() {
         let input_code = r#"let five = 5;
 let ten = 10;
 
@@ -202,7 +233,7 @@ let result = add(five, ten);
             (token::PLUS, "+"),
             (token::IDENT, "y"),
             (token::SEMICOLON, ";"),
-            (token::RBRACE, ")"),
+            (token::RBRACE, "}"),
             (token::SEMICOLON, ";"),
             (token::LET, "let"),
             (token::IDENT, "result"),
@@ -213,6 +244,77 @@ let result = add(five, ten);
             (token::COMMA, ","),
             (token::IDENT, "ten"),
             (token::RPAREN, ")"),
+            (token::SEMICOLON, ";"),
+            (token::EOF, ""),
+        ];
+        let mut lexer = Lexer::new(input_code);
+        for (exp_token, exp_literal) in expected.iter() {
+            let token = lexer.next_token();
+            assert_eq!(&token.kind, exp_token);
+            assert_eq!(&token.literal, exp_literal);
+        }
+    }
+
+    #[test]
+    fn more_identifiers_test() {
+        let input_code = r#"let five = 5;
+let ten = 10;
+
+let add = fn(x, y) {
+    x + y;
+};
+let result = add(five, ten);
+!-/*5;
+5 < 10 > 5;
+"#;
+        let expected: Vec<(token::TokenType, &str)> = vec![
+            (token::LET, "let"),
+            (token::IDENT, "five"),
+            (token::ASSIGN, "="),
+            (token::INT, "5"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "ten"),
+            (token::ASSIGN, "="),
+            (token::INT, "10"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "add"),
+            (token::ASSIGN, "="),
+            (token::FUNCTION, "fn"),
+            (token::LPAREN, "("),
+            (token::IDENT, "x"),
+            (token::COMMA, ","),
+            (token::IDENT, "y"),
+            (token::RPAREN, ")"),
+            (token::LBRACE, "{"),
+            (token::IDENT, "x"),
+            (token::PLUS, "+"),
+            (token::IDENT, "y"),
+            (token::SEMICOLON, ";"),
+            (token::RBRACE, "}"),
+            (token::SEMICOLON, ";"),
+            (token::LET, "let"),
+            (token::IDENT, "result"),
+            (token::ASSIGN, "="),
+            (token::IDENT, "add"),
+            (token::LPAREN, "("),
+            (token::IDENT, "five"),
+            (token::COMMA, ","),
+            (token::IDENT, "ten"),
+            (token::RPAREN, ")"),
+            (token::SEMICOLON, ";"),
+            (token::BANG, "!"),
+            (token::MINUS, "-"),
+            (token::SLASH, "/"),
+            (token::ASTERISK, "*"),
+            (token::INT, "5"),
+            (token::SEMICOLON, ";"),
+            (token::INT, "5"),
+            (token::LT, "<"),
+            (token::INT, "10"),
+            (token::GT, ">"),
+            (token::INT, "5"),
             (token::SEMICOLON, ";"),
             (token::EOF, ""),
         ];
